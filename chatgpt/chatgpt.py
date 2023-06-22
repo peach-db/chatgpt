@@ -114,6 +114,7 @@ class ChatGPT:
         functions (Optional[List[Function]]): A list of function objects.
         messages (Optional[List[Dict[str, Any]]]): A list of chat messages.
         system_prompt (Optional[str]): System prompt message.
+        call_fn_on_every_user_message (Optional[str]): Name of the function to call after every user message.
     """
 
     def __init__(
@@ -131,6 +132,14 @@ class ChatGPT:
         self.functions = functions
         self.temperature = temperature
         self.call_fn_on_every_user_message = call_fn_on_every_user_message
+
+        if self.call_fn_on_every_user_message is not None:
+            if self.functions is None:
+                raise ValueError("No functions provided.")
+            if self.call_fn_on_every_user_message not in [func.name for func in self.functions]:
+                raise ValueError(
+                    f"Function to call on every user msg ({self.call_fn_on_every_user_message}) not found in provided functions."
+                )
 
     def _initialize_messages(self, messages: Optional[List[Dict[str, Any]]], system_prompt: Optional[str]) -> None:
         """
