@@ -36,12 +36,12 @@ class User(BaseModel):
 
 
 def _generate_unique_id(existing_ids: list):
-    id = uuid4()
+    id = str(uuid4())
     if not existing_ids:
         return id
     else:
         while id in existing_ids:
-            id = uuid4()
+            id = str(uuid4())
         return id
 
 
@@ -90,16 +90,25 @@ async def delete_user(user_id: str):
 
 
 class Document(BaseModel):
-    value: str
+    value: str | list[str]
 
 
 @app.post("/doc/")
 async def create_doc(item: Document):
     with shelve.open(DOCS_SHELVE_PATH) as db:
-        doc_id = _generate_unique_id(existing_ids=list(db.keys()))
-        db[doc_id] = item.value
+        if isinstance(item.value, str):
+            values = [item.value]
+        else:
+            assert isinstance(item.value, list)
+            values = item.value
 
-    return {"doc_id": doc_id}
+        doc_ids = []
+        for val in values:
+            doc_id = _generate_unique_id(existing_ids=list(db.keys()))
+            db[doc_id] = val
+            doc_ids.append(doc_id)
+
+    return {"doc_ids": doc_ids}
 
 
 @app.get("/doc/{doc_id}")
@@ -163,14 +172,10 @@ async def create_bot(request: BotCreationRequest):
     return {"bot_id": bot_id}
 
 
-class ConversationRequest(BaseModel):
-    query: str
-
-
 from chatgpt import ChatGPT, Function, FunctionParameterProperties
 
 
-def update_user_context(user_id: str, context: str = ""):
+def _update_user_context(user_id: str, context: str = ""):
     with shelve.open(USER_SHELVE_PATH) as db:
         if user_id not in db:
             raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
@@ -178,6 +183,10 @@ def update_user_context(user_id: str, context: str = ""):
             # TODO: use list instead? so we can keep record of old contexts?
             user_context = db[user_id]
     return user_context
+
+
+class ConversationRequest(BaseModel):
+    query: str
 
 
 @app.post("/bot/{bot_id}/chat/{user_id}")
@@ -197,32 +206,38 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
         if user_id not in db:
             raise HTTPException(status_code=404, detail="User not found")
         else:
-            user_context = db[user_id]
+            user_context = db[user_id].strip()
 
     with shelve.open(DOCS_SHELVE_PATH) as db:
-        if user_id not in db:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if len(db.keys()) == 0:
+            raise HTTPException(status_code=404, detail="Documents are empty. Please add some documents.")
         else:
-            document_context = "\n".join([str(v) for _, v in db.items()])
+            document_context = "\n".join([str(v).strip() for _, v in db.items()])
 
     system_prompt = system_prompt.replace("{user_context}", user_context)
     system_prompt = system_prompt.replace("{document_context}", document_context)
 
     # Maintains conversation history.
     # TODO: this is overkill given we're maintain updated user_context as well.
+    history_db_key = str((user_id, bot_id))
     with shelve.open(HISTORY_SHELVE_PATH) as db:
-        if user_id in db:
-            messages = db[user_id]
+        if history_db_key in db and len(db[history_db_key]) > 0:
+            messages = db[history_db_key]
             assert messages[0]["role"] == "system"
             assert messages[0]["content"] == system_prompt
             system_prompt = None
         else:
             messages = None
+            db[history_db_key] = []
+
+    # TODO: ugly. clean-up!
+    def update_user_context(context: str = ""):
+        return _update_user_context(user_id=user_id, context=context)
 
     llm = ChatGPT(
         model="gpt-4-0613",
         system_prompt=system_prompt,
-        meesages=messages,
+        messages=messages,
         temperature=0,
         call_fn_on_every_user_message="update_user_context",
         functions=[
@@ -242,8 +257,12 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
             )
         ],
     )
+    result = llm(request.query)
 
-    return llm(request.query)[-1]["content"]
+    with shelve.open(HISTORY_SHELVE_PATH) as db:
+        db[history_db_key] = llm.messages
+
+    return result[-1]["content"]
 
 
 if __name__ == "__main__":
