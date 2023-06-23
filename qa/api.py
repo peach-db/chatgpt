@@ -1,0 +1,250 @@
+import shelve
+from typing import Annotated, Dict, Optional
+from uuid import uuid4
+
+import fastapi
+import fastapi.middleware.cors
+import uvicorn
+from fastapi import HTTPException, Request
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+
+APP_PORT = 58000
+
+app = fastapi.FastAPI()
+app.add_middleware(
+    fastapi.middleware.cors.CORSMiddleware,
+    allow_origins=["*", f"http://localhost:{APP_PORT}", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+USER_SHELVE_PATH = "user.db"
+DOCS_SHELVE_PATH = "docs.db"
+BOT_SHELVE_PATH = "bot.db"
+# TODO: refactor maybe include in "user.db". Not done here as updating a list in shelve is problematic.
+HISTORY_SHELVE_PATH = "history.db"
+USER_NOT_FOUND_ERROR_STR = "User not found"
+DOC_NOT_FOUND_ERROR_STR = "Document not found"
+
+### User CRUD ###
+
+
+class User(BaseModel):
+    context: str
+
+
+def _generate_unique_id(existing_ids: list):
+    id = uuid4()
+    if not existing_ids:
+        return id
+    else:
+        while id in existing_ids:
+            id = uuid4()
+        return id
+
+
+@app.post("/user/")
+async def create_user(item: User):
+    with shelve.open(USER_SHELVE_PATH) as db:
+        user_id = _generate_unique_id(existing_ids=list(db.keys()))
+        db[user_id] = item.context
+
+    return {"user_id": user_id}
+
+
+@app.get("/user/{user_id}")
+async def get_user(user_id: str):
+    with shelve.open(USER_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
+        else:
+            user_context = db[user_id]
+    return {"user_context": user_context}
+
+
+@app.put("/user/{user_id}")
+async def update_user(user_id: str, item: User):
+    with shelve.open(USER_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
+        else:
+            db[user_id] = item.context
+
+    return Response(status_code=200)
+
+
+@app.delete("/user/{user_id}")
+async def delete_user(user_id: str):
+    with shelve.open(USER_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
+        else:
+            del db[user_id]
+
+    return Response(status_code=200)
+
+
+### Document CRUD ###
+
+
+class Document(BaseModel):
+    value: str
+
+
+@app.post("/doc/")
+async def create_doc(item: Document):
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        doc_id = _generate_unique_id(existing_ids=list(db.keys()))
+        db[doc_id] = item.value
+
+    return {"doc_id": doc_id}
+
+
+@app.get("/doc/{doc_id}")
+async def read_doc(doc_id: str):
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        if doc_id not in db:
+            raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_ERROR_STR)
+        else:
+            document = db[doc_id]
+
+    return {"document": document}
+
+
+@app.put("/doc/{doc_id}")
+async def update_doc(doc_id: str, item: Document):
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        if doc_id not in db:
+            raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_ERROR_STR)
+        else:
+            db[doc_id] = item.value
+
+    return Response(status_code=200)
+
+
+@app.delete("/doc/{doc_id}")
+async def delete_doc(doc_id: str):
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        if doc_id not in db:
+            raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_ERROR_STR)
+        else:
+            del db[doc_id]
+
+    return Response(status_code=200)
+
+
+### BOT ENDPOINTS ###
+
+
+class BotCreationRequest(BaseModel):
+    system_prompt: Annotated[
+        str, Field(description="A system prompt that contains placeholders for `user_context` and `document_context`.")
+    ]
+
+
+@app.post("/bot")
+async def create_bot(request: BotCreationRequest):
+    """
+    Create a new bot given a specific system prompt that contains placeholders for `user_context` and `document_context`.
+    Returns a `bot_id` that can be used along with `user_id` to chat with the bot.
+    """
+    with shelve.open(BOT_SHELVE_PATH) as db:
+        bot_id = _generate_unique_id(existing_ids=list(db.keys()))
+        db[bot_id] = request.system_prompt
+
+        # TODO: generalise for finding more than 1, and listing them.
+        if ("{user_context}" not in db[bot_id]) or ("{document_context}" not in db[bot_id]):
+            raise HTTPException(
+                status_code=400, detail="System prompt must contain {user_context} and {document_context}."
+            )
+
+    return {"bot_id": bot_id}
+
+
+class ConversationRequest(BaseModel):
+    query: str
+
+
+from chatgpt import ChatGPT, Function, FunctionParameterProperties
+
+
+def update_user_context(user_id: str, context: str = ""):
+    with shelve.open(USER_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
+        else:
+            # TODO: use list instead? so we can keep record of old contexts?
+            user_context = db[user_id]
+    return user_context
+
+
+@app.post("/bot/{bot_id}/chat/{user_id}")
+async def chat(bot_id: str, user_id: str, request: ConversationRequest):
+    """
+    Chat interaction for a specific `system_prompt` and `user_context`. Returns a `response` from the bot.
+    Hitting the same end-point continuously maintains the conversation history and user context.
+    """
+    # TODO: what if user wants to restart conversation?
+    with shelve.open(BOT_SHELVE_PATH) as db:
+        if bot_id not in db:
+            raise HTTPException(status_code=404, detail="Bot not found")
+        else:
+            system_prompt = db[bot_id]
+
+    with shelve.open(USER_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail="User not found")
+        else:
+            user_context = db[user_id]
+
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        if user_id not in db:
+            raise HTTPException(status_code=404, detail="Document not found")
+        else:
+            document_context = "\n".join([str(v) for _, v in db.items()])
+
+    system_prompt = system_prompt.replace("{user_context}", user_context)
+    system_prompt = system_prompt.replace("{document_context}", document_context)
+
+    # Maintains conversation history.
+    # TODO: this is overkill given we're maintain updated user_context as well.
+    with shelve.open(HISTORY_SHELVE_PATH) as db:
+        if user_id in db:
+            messages = db[user_id]
+            assert messages[0]["role"] == "system"
+            assert messages[0]["content"] == system_prompt
+            system_prompt = None
+        else:
+            messages = None
+
+    llm = ChatGPT(
+        model="gpt-4-0613",
+        system_prompt=system_prompt,
+        meesages=messages,
+        temperature=0,
+        call_fn_on_every_user_message="update_user_context",
+        functions=[
+            Function(
+                name="update_user_context",
+                description="Provides an updated understanding of the user, and all new information about them from various sources that"
+                + "would've been updated since the chat began. CALL THIS FUNCTION.",
+                parameters=[
+                    FunctionParameterProperties(
+                        name="context",
+                        type="string",
+                        description="A description of all known information about the the user, their current situation, and what they want.",
+                        required=True,
+                    )
+                ],
+                func=update_user_context,
+            )
+        ],
+    )
+
+    return llm(request.query)[-1]["content"]
+
+
+if __name__ == "__main__":
+    uvicorn.run("api:app", port=APP_PORT, reload=True)
