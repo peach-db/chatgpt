@@ -1,4 +1,4 @@
-# ProGrad API
+# Chat API
 
 API for a conversational chatbot that understands personalized information about the user, and keeps it updated as the conversation progresses. Here, we will guide you through the API endpoints and their respective usages.
 
