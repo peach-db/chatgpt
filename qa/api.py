@@ -262,7 +262,7 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
     with shelve.open(HISTORY_SHELVE_PATH) as db:
         db[history_db_key] = llm.messages
 
-    return result[-1]["content"]
+    return {"response": result[-1]["content"]}
 
 
 if __name__ == "__main__":
