@@ -1,13 +1,14 @@
 import os
 import shelve
-from typing import Annotated, Dict, Optional
+from typing import Annotated
 from uuid import uuid4
 
 import dotenv
 import fastapi
 import fastapi.middleware.cors
 import uvicorn
-from fastapi import HTTPException, Request
+from chatgpt import ChatGPT, Function, FunctionParameterProperties
+from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -174,9 +175,6 @@ async def create_bot(request: BotCreationRequest):
             )
 
     return {"bot_id": bot_id}
-
-
-from chatgpt import ChatGPT, Function, FunctionParameterProperties
 
 
 def _update_user_context(user_id: str, context: str = ""):
