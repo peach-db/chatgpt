@@ -11,6 +11,7 @@ from chatgpt import ChatGPT, Function, FunctionParameterProperties
 from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from rich import print
 
 dotenv.load_dotenv()
 
@@ -178,13 +179,17 @@ async def create_bot(request: BotCreationRequest):
 
 
 def _update_user_context(user_id: str, context: str = ""):
+    if len(context) == 0:
+        raise HTTPException(status_code=400, detail="OpenAI returned empty context. Error!")
+
     with shelve.open(USER_SHELVE_PATH) as db:
         if user_id not in db:
             raise HTTPException(status_code=404, detail=USER_NOT_FOUND_ERROR_STR)
         else:
             # TODO: use list instead? so we can keep record of old contexts?
-            user_context = db[user_id]
-    return user_context
+            db[user_id] = context
+
+    return context
 
 
 class ConversationRequest(BaseModel):
@@ -224,7 +229,8 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
     history_db_key = str((user_id, bot_id))
     with shelve.open(HISTORY_SHELVE_PATH) as db:
         if history_db_key in db and len(db[history_db_key]) > 0:
-            messages = db[history_db_key]
+            messages = [{"role": "system", "content": system_prompt}] + db[history_db_key]
+
             assert messages[0]["role"] == "system"
             assert messages[0]["content"] == system_prompt
             system_prompt = None
