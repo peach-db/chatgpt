@@ -1,5 +1,7 @@
 # Example code
 
+1. Make sure you've set your OPENAI key via `export OPENAI_API_KEY=<>`
+
 ```python
 from typing import Optional
 
