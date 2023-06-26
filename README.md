@@ -1,5 +1,6 @@
 # Example code
 
+0. Install this package by running `pip install -e .`
 1. Make sure you've set your OPENAI key via `export OPENAI_API_KEY=<>`
 
 ```python
