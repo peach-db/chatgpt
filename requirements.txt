@@ -2,3 +2,5 @@ openai
 tenacity
 fastapi
 uvicorn
+joblib
+rich
