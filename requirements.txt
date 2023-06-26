@@ -4,4 +4,4 @@ fastapi
 uvicorn
 joblib
 rich
-dotenv
+python-dotenv
