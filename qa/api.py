@@ -1,13 +1,17 @@
+import os
 import shelve
 from typing import Annotated, Dict, Optional
 from uuid import uuid4
 
+import dotenv
 import fastapi
 import fastapi.middleware.cors
 import uvicorn
 from fastapi import HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+
+dotenv.load_dotenv()
 
 APP_PORT = 58000
 
@@ -243,13 +247,12 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
         functions=[
             Function(
                 name="update_user_context",
-                description="Provides an updated understanding of the user, and all new information about them from various sources that"
-                + "would've been updated since the chat began. CALL THIS FUNCTION.",
+                description=os.environ.get("UPDATE_USER_CONTEXT_FN_DESCRIPTION"),
                 parameters=[
                     FunctionParameterProperties(
                         name="context",
                         type="string",
-                        description="A description of all known information about the the user, their current situation, and what they want.",
+                        description=os.environ.get("UPDATE_USER_CONTEXT_FN_CTX_PARAM_DESCRIPTION"),
                         required=True,
                     )
                 ],
