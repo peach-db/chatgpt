@@ -126,6 +126,14 @@ async def get_doc_info():
 
     return info
 
+@app.get("/doc-all")
+async def get_all_docs():
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        if len(db.keys()) == 0:
+            raise HTTPException(status_code=404, detail="Documents are empty. Please add some documents.")
+        else:
+            return list(db.items())
+
 
 @app.get("/doc/{doc_id}")
 async def read_doc(doc_id: str):

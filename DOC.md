@@ -215,6 +215,14 @@ Method: `GET`
 
 This endpoint returns information about the collection of documents (such as number of documents in it).
 
+#### 6. Get all Documents
+
+URL: `/doc-all`
+
+Method: `GET`
+
+This endpoint returns all documents currently loaded into database.
+
 ### Bots
 
 #### 1. Create Bot
