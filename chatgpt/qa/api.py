@@ -7,11 +7,12 @@ import dotenv
 import fastapi
 import fastapi.middleware.cors
 import uvicorn
-from chatgpt import ChatGPT, Function, FunctionParameterProperties
 from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from rich import print
+
+from chatgpt import ChatGPT, Function, FunctionParameterProperties
 
 dotenv.load_dotenv()
 
@@ -117,6 +118,15 @@ async def create_doc(item: Document):
     return {"doc_ids": doc_ids}
 
 
+@app.get("/doc/")
+async def get_doc_info():
+    info = {}
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        info["num_docs"] = len(db.keys())
+
+    return info
+
+
 @app.get("/doc/{doc_id}")
 async def read_doc(doc_id: str):
     with shelve.open(DOCS_SHELVE_PATH) as db:
@@ -148,6 +158,15 @@ async def delete_doc(doc_id: str):
             del db[doc_id]
 
     return Response(status_code=200)
+
+
+# TODO: maybe accept an expression in the above endpoint so we can delete anything that matches?
+@app.delete("/doc-all")
+async def delete_all_docs():
+    with shelve.open(DOCS_SHELVE_PATH) as db:
+        db.clear()
+
+    return Response("All documents deleted.", status_code=200)
 
 
 ### BOT ENDPOINTS ###

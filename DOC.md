@@ -199,6 +199,22 @@ Path Parameters:
 
 This endpoint deletes a document based on its doc_id.
 
+#### 5. Empty All Documents
+
+URL: `/doc-all`
+
+Method: `DELETE`
+
+This endpoint deletes all documents in the collection.
+
+#### 6. Get Info about Collection of Documents
+
+URL: `/doc`
+
+Method: `GET`
+
+This endpoint returns information about the collection of documents (such as number of documents in it).
+
 ### Bots
 
 #### 1. Create Bot
