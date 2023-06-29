@@ -256,7 +256,7 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
     history_db_key = str((user_id, bot_id))
     with shelve.open(HISTORY_SHELVE_PATH) as db:
         if history_db_key in db and len(db[history_db_key]) > 0:
-            messages = [{"role": "system", "content": system_prompt}] + db[history_db_key]
+            messages = db[history_db_key]
 
             assert messages[0]["role"] == "system"
             assert messages[0]["content"] == system_prompt
@@ -264,6 +264,7 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
         else:
             messages = None
             db[history_db_key] = []
+            system_prompt = system_prompt
 
     # TODO: ugly. clean-up!
     def update_user_context(context: str = ""):
