@@ -156,8 +156,9 @@ async def read_doc(doc_id: str):
             raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_ERROR_STR)
         else:
             document = db[doc_id]
+            num_tokens = len(tokenizer.encode(document))
 
-    return {"document": document}
+    return {"document": document, "num_tokens": num_tokens}
 
 
 @app.put("/doc/{doc_id}")

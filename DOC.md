@@ -161,11 +161,12 @@ Response Body:
 
 ```json
 {
-  "document": "string"
+  "document": "string",
+  "num_tokens": "int"
 }
 ```
 
-This endpoint retrieves a document's content based on its doc_id.
+This endpoint retrieves a document's content based on its doc_id. It additionally provides the number of tokens used by the document.
 
 #### 3. Update Document
 
