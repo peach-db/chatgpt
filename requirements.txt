@@ -5,3 +5,4 @@ uvicorn
 joblib
 rich
 python-dotenv
+tiktoken

@@ -221,7 +221,16 @@ URL: `/doc-all`
 
 Method: `GET`
 
-This endpoint returns all documents currently loaded into database.
+This endpoint returns all documents currently loaded into database. Each item returns as a tuple of its ID, content, as well as the number of tokens used by that document. This endpoint also separately returns `total_tokens`.
+
+Response Body:
+
+```json
+{
+  "items": [["str", "str", "int"]], // (id, doc, number of tokens)
+  "total_tokens": "int"
+}
+```
 
 ### Bots
 

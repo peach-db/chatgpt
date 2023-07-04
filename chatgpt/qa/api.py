@@ -6,6 +6,7 @@ from uuid import uuid4
 import dotenv
 import fastapi
 import fastapi.middleware.cors
+import tiktoken
 import uvicorn
 from fastapi import HTTPException
 from fastapi.responses import Response
@@ -34,6 +35,7 @@ BOT_SHELVE_PATH = "bot.db"
 HISTORY_SHELVE_PATH = "history.db"
 USER_NOT_FOUND_ERROR_STR = "User not found"
 DOC_NOT_FOUND_ERROR_STR = "Document not found"
+tokenizer = tiktoken.encoding_for_model("gpt-4")
 
 ### User CRUD ###
 
@@ -126,13 +128,25 @@ async def get_doc_info():
 
     return info
 
+
 @app.get("/doc-all")
 async def get_all_docs():
     with shelve.open(DOCS_SHELVE_PATH) as db:
         if len(db.keys()) == 0:
-            raise HTTPException(status_code=404, detail="Documents are empty. Please add some documents.")
+            raise HTTPException(
+                status_code=404,
+                detail="Documents are empty. Please add some documents.",
+            )
         else:
-            return list(db.items())
+            items = list(db.items())
+            token_lens = [len(tokenizer.encode(item[1])) for item in items]
+            for i in range(len(items)):
+                items[i] = (*items[i], token_lens[i])
+                
+            return {
+                "items": items,
+                "total_tokens": sum(token_lens),
+            }
 
 
 @app.get("/doc/{doc_id}")
@@ -182,7 +196,10 @@ async def delete_all_docs():
 
 class BotCreationRequest(BaseModel):
     system_prompt: Annotated[
-        str, Field(description="A system prompt that contains placeholders for `user_context` and `document_context`.")
+        str,
+        Field(
+            description="A system prompt that contains placeholders for `user_context` and `document_context`."
+        ),
     ]
 
 
@@ -197,9 +214,12 @@ async def create_bot(request: BotCreationRequest):
         db[bot_id] = request.system_prompt
 
         # TODO: generalise for finding more than 1, and listing them.
-        if ("{user_context}" not in db[bot_id]) or ("{document_context}" not in db[bot_id]):
+        if ("{user_context}" not in db[bot_id]) or (
+            "{document_context}" not in db[bot_id]
+        ):
             raise HTTPException(
-                status_code=400, detail="System prompt must contain {user_context} and {document_context}."
+                status_code=400,
+                detail="System prompt must contain {user_context} and {document_context}.",
             )
 
     return {"bot_id": bot_id}
@@ -207,7 +227,9 @@ async def create_bot(request: BotCreationRequest):
 
 def _update_user_context(user_id: str, context: str = ""):
     if len(context) == 0:
-        raise HTTPException(status_code=400, detail="OpenAI returned empty context. Error!")
+        raise HTTPException(
+            status_code=400, detail="OpenAI returned empty context. Error!"
+        )
 
     with shelve.open(USER_SHELVE_PATH) as db:
         if user_id not in db:
@@ -244,7 +266,10 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
 
     with shelve.open(DOCS_SHELVE_PATH) as db:
         if len(db.keys()) == 0:
-            raise HTTPException(status_code=404, detail="Documents are empty. Please add some documents.")
+            raise HTTPException(
+                status_code=404,
+                detail="Documents are empty. Please add some documents.",
+            )
         else:
             document_context = "\n".join([str(v).strip() for _, v in db.items()])
 
@@ -259,7 +284,12 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
             messages = db[history_db_key]
 
             assert messages[0]["role"] == "system"
-            assert messages[0]["content"] == system_prompt
+
+            if messages[0]["content"] != system_prompt:
+                return HTTPException(
+                    detail="Documents changed since last conversation. Please restart conversation.",
+                    status_code=400,
+                )
             system_prompt = None
         else:
             messages = None
@@ -284,7 +314,9 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
                     FunctionParameterProperties(
                         name="context",
                         type="string",
-                        description=os.environ.get("UPDATE_USER_CONTEXT_FN_CTX_PARAM_DESCRIPTION"),
+                        description=os.environ.get(
+                            "UPDATE_USER_CONTEXT_FN_CTX_PARAM_DESCRIPTION"
+                        ),
                         required=True,
                     )
                 ],
