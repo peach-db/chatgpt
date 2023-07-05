@@ -286,11 +286,12 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
 
             assert messages[0]["role"] == "system"
 
-            if messages[0]["content"] != system_prompt:
-                raise HTTPException(
-                    detail="Documents changed since last conversation. Please restart conversation.",
-                    status_code=400,
-                )
+            # TODO: user context gets updated, so system_prompt is changing! 
+            # if messages[0]["content"] != system_prompt:
+            #     raise HTTPException(
+            #         detail="Documents changed since last conversation. Please restart conversation.",
+            #         status_code=400,
+            #     )
             system_prompt = None
         else:
             messages = None
