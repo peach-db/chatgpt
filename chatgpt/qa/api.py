@@ -287,7 +287,7 @@ async def chat(bot_id: str, user_id: str, request: ConversationRequest):
             assert messages[0]["role"] == "system"
 
             if messages[0]["content"] != system_prompt:
-                return HTTPException(
+                raise HTTPException(
                     detail="Documents changed since last conversation. Please restart conversation.",
                     status_code=400,
                 )
